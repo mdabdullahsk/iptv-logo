@@ -22,9 +22,7 @@ const channelConfig = {
     'tsports':       'http://103.165.93.31:8095/tsports/'
 };
 
-const BRAND_NAME = "MY_BRAND_TV";
-
-// ১৫ সেকেন্ডের মেমোরি ক্যাশ (হাজার হাজার ইউজারের চাপের জন্য)
+// ১৫ সেকেন্ডের মেমোরি ক্যাশ
 const segmentCache = {};
 
 const server = http.createServer((req, res) => {
@@ -46,16 +44,16 @@ const server = http.createServer((req, res) => {
                 'Cache-Control': 'public, max-age=10'
             });
 
-            // যদি ক্যাশে থাকে তবে তাৎক্ষণিক মেমোরি থেকে ডেলিভারি
             if (segmentCache[targetUrl]) {
                 return res.end(segmentCache[targetUrl]);
             }
 
+            // ABOX (সাদা) ও BDIX (নীল) কালার এবং স্কিনের নিচে মোটা ফন্টের ফিল্টার
             const ffmpegArgs = [
                 '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
                 '-copyts',
                 '-i', targetUrl,
-                '-vf', `scale=640:360,drawtext=text=${BRAND_NAME}:x=w-tw-15:y=15:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=2`,
+                '-vf', `scale=640:360,drawtext=font='Sans':text='ABOX':x=(w-130)/2:y=h-40:fontsize=22:fontcolor=white:borderw=2:bordercolor=black,drawtext=font='Sans':text='BDIX':x=(w-130)/2+70:y=h-40:fontsize=22:fontcolor=0x0099FF:borderw=2:bordercolor=black`,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'zerolatency',
@@ -71,10 +69,8 @@ const server = http.createServer((req, res) => {
 
             const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
-            // ⚡ ডাইরেক্ট লাইভ পাইপিং (১ মিলি-সেকেন্ডেও প্লেয়ারকে ওয়েট করাবে না)
             ffmpegProcess.stdout.pipe(res);
 
-            // ব্যাকগ্রাউন্ডে পরবর্তী ইউজারের জন্য ক্যাশ তৈরি
             const chunks = [];
             ffmpegProcess.stdout.on('data', chunk => chunks.push(chunk));
             ffmpegProcess.stdout.on('end', () => {
@@ -92,7 +88,7 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        // ২. প্লেলিস্ট (.m3u8) ডাইরেক্ট প্রক্সি (অপরিবর্তিত)
+        // ২. প্লেলিস্ট (.m3u8) ডাইরেক্ট প্রক্সি
         try {
             const parsedUrl = new URL(targetUrl);
             const protocol = parsedUrl.protocol === 'https:' ? https : http;
