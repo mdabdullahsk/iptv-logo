@@ -22,9 +22,9 @@ const channelConfig = {
     'tsports':       'http://103.165.93.31:8095/tsports/'
 };
 
-const BRAND_NAME = "ABOX BDIX";
+const BRAND_NAME = "MY_BRAND_TV";
 
-// ১৫ সেকেন্ডের শর্ট ক্যাশ (হাজার হাজার ইউজারের চাপ সামলানোর জন্য)
+// ১৫ সেকেন্ডের মেমোরি ক্যাশ (হাজার হাজার ইউজারের চাপের জন্য)
 const segmentCache = {};
 
 const server = http.createServer((req, res) => {
@@ -46,16 +46,11 @@ const server = http.createServer((req, res) => {
                 'Cache-Control': 'public, max-age=10'
             });
 
-            // মেমোরি থেকে ইনস্ট্যান্ট আউটপুট
+            // যদি ক্যাশে থাকে তবে তাৎক্ষণিক মেমোরি থেকে ডেলিভারি
             if (segmentCache[targetUrl]) {
                 return res.end(segmentCache[targetUrl]);
             }
 
-            /*
-              আল্ট্রা-লাইট জিরো বাফারিং কনফিগারেশন:
-              - scale=640:360 (সব ধরণের স্লো ইন্টারনেটে পানির মতো চলবে)
-              - crf 28 & maxrate 600k (একদম হালকা ও বাফার-ফ্রি)
-            */
             const ffmpegArgs = [
                 '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
                 '-copyts',
@@ -75,19 +70,18 @@ const server = http.createServer((req, res) => {
             ];
 
             const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+
+            // ⚡ ডাইরেক্ট লাইভ পাইপিং (১ মিলি-সেকেন্ডেও প্লেয়ারকে ওয়েট করাবে না)
+            ffmpegProcess.stdout.pipe(res);
+
+            // ব্যাকগ্রাউন্ডে পরবর্তী ইউজারের জন্য ক্যাশ তৈরি
             const chunks = [];
-
             ffmpegProcess.stdout.on('data', chunk => chunks.push(chunk));
-
             ffmpegProcess.stdout.on('end', () => {
-                const buffer = Buffer.concat(chunks);
-                segmentCache[targetUrl] = buffer;
-
-                setTimeout(() => {
-                    delete segmentCache[targetUrl];
-                }, 15000);
-
-                res.end(buffer);
+                if (chunks.length > 0) {
+                    segmentCache[targetUrl] = Buffer.concat(chunks);
+                    setTimeout(() => { delete segmentCache[targetUrl]; }, 15000);
+                }
             });
 
             req.on('close', () => {
@@ -98,7 +92,7 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        // ২. প্লেলিস্ট (.m3u8) ডাইরেক্ট প্রক্সি
+        // ২. প্লেলিস্ট (.m3u8) ডাইরেক্ট প্রক্সি (অপরিবর্তিত)
         try {
             const parsedUrl = new URL(targetUrl);
             const protocol = parsedUrl.protocol === 'https:' ? https : http;
@@ -140,7 +134,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-const PORT = 3000;
+const PORT = 8181;
 server.listen(PORT, () => {
     console.log(`High-Scale Reseller Proxy Server running on port ${PORT}`);
 });
