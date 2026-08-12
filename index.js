@@ -24,6 +24,9 @@ const channelConfig = {
 
 const BRAND_NAME = "MY_BRAND_TV";
 
+// ১৫ সেকেন্ডের শর্ট ক্যাশ (হাজার হাজার ইউজারের চাপ সামলানোর জন্য)
+const segmentCache = {};
+
 const server = http.createServer((req, res) => {
     const urlParts = req.url.split('?')[0].split('/').filter(p => p);
     const channelKey = urlParts[0]; 
@@ -35,13 +38,25 @@ const server = http.createServer((req, res) => {
         const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
         const targetUrl = baseUrl + fileName + queryString;
 
-        // ১. ভিডিও সেগমেন্ট (.ts): -copyts যোগ করায় আসল সময় বজায় থাকবে
+        // ১. ভিডিও সেগমেন্ট (.ts)
         if (fileName.endsWith('.ts')) {
+            res.writeHead(200, {
+                'Content-Type': 'video/mp2t',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'public, max-age=10'
+            });
+
+            // যদি আগের ইউজার জেনারেট করে থাকে, তবে মেমোরি থেকে দ্রুত মেমরিতে আউটপুট দিবে
+            if (segmentCache[targetUrl]) {
+                return res.end(segmentCache[targetUrl]);
+            }
+
+            // বাফারিং মুক্ত ফাস্ট 480p কোয়ালিটি (scale=854:-2)
             const ffmpegArgs = [
                 '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
-                '-copyts', // 👈 মূল ফিক্স: আসল টাইমস্ট্যাম্প বজায় রাখবে (১১ সেকেন্ডে সময় আটকাবে না)
+                '-copyts',
                 '-i', targetUrl,
-                '-vf', `scale=1280:-2,drawtext=text=${BRAND_NAME}:x=w-tw-25:y=25:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=3`,
+                '-vf', `scale=854:-2,drawtext=text=${BRAND_NAME}:x=w-tw-20:y=20:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=2`,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'zerolatency',
@@ -52,13 +67,22 @@ const server = http.createServer((req, res) => {
                 'pipe:1'
             ];
 
-            res.writeHead(200, {
-                'Content-Type': 'video/mp2t',
-                'Access-Control-Allow-Origin': '*'
-            });
-
             const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
-            ffmpegProcess.stdout.pipe(res);
+            const chunks = [];
+
+            ffmpegProcess.stdout.on('data', chunk => chunks.push(chunk));
+
+            ffmpegProcess.stdout.on('end', () => {
+                const buffer = Buffer.concat(chunks);
+                segmentCache[targetUrl] = buffer;
+
+                // ১৫ সেকেন্ড পর মেমোরি থেকে মুছে দেওয়া
+                setTimeout(() => {
+                    delete segmentCache[targetUrl];
+                }, 15000);
+
+                res.end(buffer);
+            });
 
             req.on('close', () => {
                 ffmpegProcess.kill('SIGKILL');
@@ -110,7 +134,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-const PORT = 3000;
+const PORT = 8181;
 server.listen(PORT, () => {
-    console.log(`Original Pure Proxy Server with Continuous PTS running on port ${PORT}`);
+    console.log(`High-Scale Reseller Proxy Server running on port ${PORT}`);
 });
