@@ -53,7 +53,7 @@ const server = http.createServer((req, res) => {
                 '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
                 '-copyts',
                 '-i', targetUrl,
-                '-vf', `scale=640:360,drawtext=font='Sans':text='ABOX':x=(w-130)/2:y=h-40:fontsize=22:fontcolor=white:borderw=2:bordercolor=black,drawtext=font='Sans':text='BDIX':x=(w-130)/2+70:y=h-40:fontsize=22:fontcolor=0x0099FF:borderw=2:bordercolor=black`,
+                '-vf', `scale=640:360,drawtext=font='Sans':style='Bold Italic':text='ABOX':x=w-135:y=h-38:fontsize=22:fontcolor=white:borderw=2:bordercolor=black,drawtext=font='Sans':style='Bold Italic':text='BDIX':x=w-70:y=h-38:fontsize=22:fontcolor=0x0099FF:borderw=2:bordercolor=black`,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'zerolatency',
