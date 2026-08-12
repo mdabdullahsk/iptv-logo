@@ -23,29 +23,29 @@ const channelConfig = {
 
 const BRAND_NAME = "MY_BRAND_TV";
 
-// সম্পূর্ণ RAM মেমোরিতে ফাইল জমা রাখার অবজেক্ট (জিরো ডিস্ক স্টোরেজ)
 const RAM_CACHE = {}; 
 const activeStreams = {};
 
 function startFFmpegStream(channelKey, sourceUrl) {
     if (activeStreams[channelKey]) return;
 
-    console.log(`[🚀 RAM Stream Started] Transcoding for: ${channelKey}`);
+    console.log(`[Low-CPU Stream Started] Channel: ${channelKey}`);
 
     RAM_CACHE[channelKey] = {};
 
     const ffmpegArgs = [
         '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
         '-i', sourceUrl,
-        '-vf', `scale=960:-2,drawtext=text=${BRAND_NAME}:x=w-tw-20:y=20:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=3`,
+        '-vf', `scale=640:-2,drawtext=text=${BRAND_NAME}:x=w-tw-20:y=20:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=2`,
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-tune', 'zerolatency',
-        '-b:v', '800k',         // অত্যন্ত হালকা বিটরেট (৮০০ kbps)
-        '-maxrate', '900k',
-        '-bufsize', '1800k',
+        '-bf', '0',             
+        '-b:v', '600k',         
+        '-maxrate', '700k',
+        '-bufsize', '1400k',
         '-c:a', 'aac',
-        '-b:a', '64k',
+        '-b:a', '48k',
         '-f', 'hls',
         '-hls_time', '2',
         '-hls_list_size', '5',
@@ -62,18 +62,17 @@ function startFFmpegStream(channelKey, sourceUrl) {
     };
 
     process.on('exit', () => {
-        console.log(`[🛑 Cleared RAM] Channel Stopped: ${channelKey}`);
+        console.log(`[Cleared RAM] Channel Stopped: ${channelKey}`);
         delete RAM_CACHE[channelKey];
         delete activeStreams[channelKey];
     });
 }
 
-// ইন-অ্যাক্টিভ চ্যানেল ৩ মিনিট পর RAM থেকে রিমুভ করার টাইমার
 setInterval(() => {
     const now = Date.now();
     for (const key in activeStreams) {
-        if (now - activeStreams[key].lastRequested > 180000) { // ৩ মিনিট
-            console.log(`[💤 Idle Timeout] Closing stream: ${key}`);
+        if (now - activeStreams[key].lastRequested > 180000) {
+            console.log(`[Idle Timeout] Closing stream: ${key}`);
             activeStreams[key].process.kill('SIGKILL');
         }
     }
@@ -81,7 +80,6 @@ setInterval(() => {
 
 const server = http.createServer((req, res) => {
 
-    // ১. FFmpeg থেকে RAM এ HLS ফাইল আপলোড রিসিভ করা (PUT Method)
     if (req.method === 'PUT' && req.url.startsWith('/upload/')) {
         const parts = req.url.replace('/upload/', '').split('/');
         const channelKey = parts[0];
@@ -99,7 +97,6 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // ২. ইউজারের প্লেয়ার রিকোয়েস্ট হ্যান্ডেল করা (GET Method)
     const urlParts = req.url.split('?')[0].split('/').filter(p => p);
 
     if (urlParts.length === 0) {
@@ -108,7 +105,7 @@ const server = http.createServer((req, res) => {
     }
 
     const channelKey = urlParts[0];
-    const fileName = urlParts[1] || 'index.m3u8'; // ডিফল্ট প্লেলিস্ট
+    const fileName = urlParts[1] || 'index.m3u8';
 
     const sourceUrl = channelConfig[channelKey];
 
@@ -117,14 +114,12 @@ const server = http.createServer((req, res) => {
         return res.end('Channel Not Found');
     }
 
-    // ব্যাকগ্রাউন্ডে FFmpeg চালু না থাকলে চালুকরো
     if (!activeStreams[channelKey]) {
         startFFmpegStream(channelKey, sourceUrl);
     }
     
     activeStreams[channelKey].lastRequested = Date.now();
 
-    // RAM থেকে ডাটা নিয়ে ক্লায়েন্টকে দেওয়া
     let attempts = 0;
     const sendFromRAM = () => {
         if (RAM_CACHE[channelKey] && RAM_CACHE[channelKey][fileName]) {
@@ -139,7 +134,7 @@ const server = http.createServer((req, res) => {
             res.end(data);
         } else {
             attempts++;
-            if (attempts < 25) { // ফাইল র‍্যামে তৈরি হওয়া পর্যন্ত ৪ সেকেন্ড অপেক্ষা
+            if (attempts < 25) {
                 setTimeout(sendFromRAM, 150);
             } else {
                 res.writeHead(404);
@@ -153,5 +148,5 @@ const server = http.createServer((req, res) => {
 
 const PORT = 8181;
 server.listen(PORT, () => {
-    console.log(`🚀 Pure RAM In-Memory IPTV Server Running on http://localhost:${PORT}`);
+    console.log(` Pure RAM In-Memory IPTV Server Running on http://localhost:${PORT}`);
 });
