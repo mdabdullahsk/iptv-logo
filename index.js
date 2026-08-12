@@ -1,176 +1,116 @@
 const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 
 const channelConfig = {
-    'jalsha-movies': 'https://tvsen6.aynaott.com/zv68oqPDu7MZZwmHhRxt/tracks-v1a1/mono.ts.m3u8',
-    'colors-bangla': 'http://180.94.28.28:8097/COLORS-BANGLA/index.m3u8',
-    'star-jalsha':   'http://180.94.28.28:8097/STAR-JALSHA/index.m3u8',
-    'zee-bangla':    'http://180.94.28.28:8097/ZEE-BANGLA/index.m3u8',
-    'btv':           'http://180.94.28.28:8097/BTV/index.m3u8',
-    'asports':       'http://180.94.28.28:8097/A-Sports/index.m3u8',
-    'star-ss1':      'http://180.94.28.28:8097/Star-Sports-Select-1/index.m3u8',
-    'star-ss2':      'http://180.94.28.28:8097/star-Sports-Select-2/index.m3u8',
-    'ten5':          'http://180.94.28.28:8097/Sony-Ten-5/index.m3u8',
-    'ten2':          'http://180.94.28.28:8097/Sony-Ten-2/index.m3u8',
-    'ten1':          'http://180.94.28.28:8097/Sony-Ten-1/index.m3u8',
-    'star2':         'http://180.94.28.28:8097/Star-Sports-2/index.m3u8',
-    'star1':         'http://180.94.28.28:8097/STAR-SPORTS-1/index.m3u8',
-    'sonyaath':      'http://180.94.28.28:8097/SONY-AATH/index.m3u8',
+    'jalsha-movies': 'http://180.94.28.28:8097/JALSHA-MOVIES/',
+    'colors-bangla': 'http://180.94.28.28:8097/COLORS-BANGLA/',
+    'star-jalsha':   'http://180.94.28.28:8097/STAR-JALSHA/',
+    'zee-bangla':    'http://180.94.28.28:8097/ZEE-BANGLA/',
+    'btv':           'http://180.94.28.28:8097/BTV/',
+    'asports':       'http://180.94.28.28:8097/A-Sports/',
+    'star-ss1':      'http://180.94.28.28:8097/Star-Sports-Select-1/',
+    'star-ss2':      'http://180.94.28.28:8097/star-Sports-Select-2/',
+    'ten5':          'http://180.94.28.28:8097/Sony-Ten-5/',
+    'ten2':          'http://180.94.28.28:8097/Sony-Ten-2/',
+    'ten1':          'http://180.94.28.28:8097/Sony-Ten-1/',
+    'star2':         'http://180.94.28.28:8097/Star-Sports-2/',
+    'star1':         'http://180.94.28.28:8097/STAR-SPORTS-1/',
+    'sonyaath':      'http://180.94.28.28:8097/SONY-AATH/',
 
-    'ptv':           'http://103.165.93.31:8095/ptv/index.m3u8',
-    'tsports':       'http://103.165.93.31:8095/tsports/index.m3u8'
+    'ptv':           'http://103.165.93.31:8095/ptv/',
+    'tsports':       'http://103.165.93.31:8095/tsports/'
 };
 
 const BRAND_NAME = "MY_BRAND_TV";
 
-// RAM Cache for HLS Files
-const RAM_CACHE = {}; 
-const activeStreams = {};
-
-function startFFmpegStream(channelKey, sourceUrl) {
-    if (activeStreams[channelKey]) return;
-
-    console.log(`[Stream Started] Channel: ${channelKey}`);
-
-    RAM_CACHE[channelKey] = {};
-    
-    const ffmpegArgs = [
-        '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
-        '-i', sourceUrl,
-        '-vf', `scale=1280:-2,drawtext=text=${BRAND_NAME}:x=w-tw-25:y=25:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=3`,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-bf', '0',
-        '-g', '30',
-        '-r', '25',
-        '-b:v', '1200k',
-        '-maxrate', '1400k',
-        '-bufsize', '2800k',
-        '-c:a', 'aac',
-        '-b:a', '96k',
-        '-f', 'hls',
-        '-hls_time', '2',
-        '-hls_list_size', '10',
-        '-hls_flags', 'delete_segments+omit_endlist',
-        '-method', 'PUT',
-        `http://127.0.0.1:8181/upload/${channelKey}/index.m3u8`
-    ];
-
-    const process = spawn('ffmpeg', ffmpegArgs);
-
-    activeStreams[channelKey] = {
-        process,
-        lastRequested: Date.now()
-    };
-
-    process.on('exit', () => {
-        console.log(`[Channel Stopped] Cleared RAM: ${channelKey}`);
-        delete RAM_CACHE[channelKey];
-        delete activeStreams[channelKey];
-    });
-}
-
-setInterval(() => {
-    const now = Date.now();
-    for (const key in activeStreams) {
-        if (now - activeStreams[key].lastRequested > 300000) {
-            console.log(`[ Auto Timeout] Stopping stream: ${key}`);
-            activeStreams[key].process.kill('SIGKILL');
-        }
-    }
-}, 30000);
-
 const server = http.createServer((req, res) => {
-   
-    if (req.method === 'PUT' && req.url.startsWith('/upload/')) {
-        const parts = req.url.replace('/upload/', '').split('/');
-        const channelKey = parts[0];
-        const fileName = parts[1];
-
-        if (!RAM_CACHE[channelKey]) RAM_CACHE[channelKey] = {};
-
-        const chunks = [];
-        req.on('data', chunk => chunks.push(chunk));
-        req.on('end', () => {
-            RAM_CACHE[channelKey][fileName] = Buffer.concat(chunks);
-            
-            const files = Object.keys(RAM_CACHE[channelKey]);
-            if (files.length > 22) {
-                const tsFiles = files.filter(f => f.endsWith('.ts')).sort();
-                while (tsFiles.length > 12) {
-                    const oldest = tsFiles.shift();
-                    delete RAM_CACHE[channelKey][oldest];
-                }
-            }
-
-            res.writeHead(200);
-            res.end();
-        });
-        return;
-    }
-    
     const urlParts = req.url.split('?')[0].split('/').filter(p => p);
+    const channelKey = urlParts[0]; 
+    const fileName = urlParts.slice(1).join('/') || 'index.m3u8';
 
-    if (urlParts.length === 0) {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        return res.end('Pro Reseller IPTV RAM Server Active');
-    }
+    const baseUrl = channelConfig[channelKey];
 
-    const channelKey = urlParts[0];
-    const fileName = urlParts[1] || 'index.m3u8';
+    if (baseUrl) {
+        const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+        const targetUrl = baseUrl + fileName + queryString;
 
-    const sourceUrl = channelConfig[channelKey];
+        // ১. ভিডিও সেগমেন্ট (.ts): -copyts যোগ করায় আসল সময় বজায় থাকবে
+        if (fileName.endsWith('.ts')) {
+            const ffmpegArgs = [
+                '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
+                '-copyts', // 👈 মূল ফিক্স: আসল টাইমস্ট্যাম্প বজায় রাখবে (১১ সেকেন্ডে সময় আটকাবে না)
+                '-i', targetUrl,
+                '-vf', `scale=1280:-2,drawtext=text=${BRAND_NAME}:x=w-tw-25:y=25:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=3`,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-tune', 'zerolatency',
+                '-bf', '0',
+                '-c:a', 'copy',
+                '-muxdelay', '0',
+                '-f', 'mpegts',
+                'pipe:1'
+            ];
 
-    if (!sourceUrl) {
-        res.writeHead(404);
-        return res.end('Channel Not Found');
-    }
+            res.writeHead(200, {
+                'Content-Type': 'video/mp2t',
+                'Access-Control-Allow-Origin': '*'
+            });
 
-    if (!activeStreams[channelKey]) {
-        startFFmpegStream(channelKey, sourceUrl);
-    }
-    
-    activeStreams[channelKey].lastRequested = Date.now();
+            const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+            ffmpegProcess.stdout.pipe(res);
 
-    let attempts = 0;
-    const sendFromRAM = () => {
-        if (RAM_CACHE[channelKey] && RAM_CACHE[channelKey][fileName]) {
-            const data = RAM_CACHE[channelKey][fileName];
-            const isM3u8 = fileName.endsWith('.m3u8');
-           
-            const headers = {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': '*'
+            req.on('close', () => {
+                ffmpegProcess.kill('SIGKILL');
+            });
+
+            ffmpegProcess.on('error', () => res.end());
+            return;
+        }
+
+        // ২. প্লেলিস্ট (.m3u8) ডাইরেক্ট প্রক্সি
+        try {
+            const parsedUrl = new URL(targetUrl);
+            const protocol = parsedUrl.protocol === 'https:' ? https : http;
+
+            const options = {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Host': parsedUrl.host,
+                    'Referer': parsedUrl.origin,
+                    'Connection': 'keep-alive'
+                }
             };
 
-            if (isM3u8) {
-                headers['Content-Type'] = 'application/vnd.apple.mpegurl';
-                headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0';
-                headers['Pragma'] = 'no-cache';
-                headers['Expires'] = '0';
-            } else {
-                headers['Content-Type'] = 'video/mp2t';
-                headers['Cache-Control'] = 'public, max-age=86400';
-            }
+            const proxyReq = protocol.request(targetUrl, options, (proxyRes) => {
+                res.writeHead(proxyRes.statusCode, {
+                    ...proxyRes.headers,
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate'
+                });
+                proxyRes.pipe(res);
+            });
 
-            res.writeHead(200, headers);
-            res.end(data);
-        } else {
-            attempts++;
-            if (attempts < 30) {
-                setTimeout(sendFromRAM, 150);
-            } else {
-                res.writeHead(404);
-                res.end('Stream Loading...');
-            }
+            proxyReq.on('error', () => {
+                res.writeHead(502);
+                res.end();
+            });
+
+            proxyReq.setTimeout(10000, () => proxyReq.destroy());
+            req.pipe(proxyReq);
+
+        } catch (e) {
+            res.writeHead(500);
+            res.end();
         }
-    };
-
-    sendFromRAM();
+    } else {
+        res.writeHead(404);
+        res.end('Channel Not Found');
+    }
 });
 
-const PORT = 8181;
+const PORT = 3000;
 server.listen(PORT, () => {
-    console.log(` Pro Reseller IPTV Server Running on http://localhost:${PORT}`);
+    console.log(`Original Pure Proxy Server with Continuous PTS running on port ${PORT}`);
 });
