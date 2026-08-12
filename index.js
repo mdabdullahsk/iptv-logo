@@ -22,7 +22,7 @@ const channelConfig = {
     'tsports':       'http://103.165.93.31:8095/tsports/'
 };
 
-const BRAND_NAME = "MY_BRAND_TV";
+const BRAND_NAME = "ABOX BDIX";
 
 // ১৫ সেকেন্ডের শর্ট ক্যাশ (হাজার হাজার ইউজারের চাপ সামলানোর জন্য)
 const segmentCache = {};
@@ -38,7 +38,7 @@ const server = http.createServer((req, res) => {
         const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
         const targetUrl = baseUrl + fileName + queryString;
 
-        // ১. ভিডিও সেগমেন্ট (.ts)
+        // ১. ভিডিও সেগমেন্ট (.ts) প্রসেস করা
         if (fileName.endsWith('.ts')) {
             res.writeHead(200, {
                 'Content-Type': 'video/mp2t',
@@ -46,20 +46,27 @@ const server = http.createServer((req, res) => {
                 'Cache-Control': 'public, max-age=10'
             });
 
-            // যদি আগের ইউজার জেনারেট করে থাকে, তবে মেমোরি থেকে দ্রুত মেমরিতে আউটপুট দিবে
+            // মেমোরি থেকে ইনস্ট্যান্ট আউটপুট
             if (segmentCache[targetUrl]) {
                 return res.end(segmentCache[targetUrl]);
             }
 
-            // বাফারিং মুক্ত ফাস্ট 480p কোয়ালিটি (scale=854:-2)
+            /*
+              আল্ট্রা-লাইট জিরো বাফারিং কনফিগারেশন:
+              - scale=640:360 (সব ধরণের স্লো ইন্টারনেটে পানির মতো চলবে)
+              - crf 28 & maxrate 600k (একদম হালকা ও বাফার-ফ্রি)
+            */
             const ffmpegArgs = [
                 '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
                 '-copyts',
                 '-i', targetUrl,
-                '-vf', `scale=854:-2,drawtext=text=${BRAND_NAME}:x=w-tw-20:y=20:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=2`,
+                '-vf', `scale=640:360,drawtext=text=${BRAND_NAME}:x=w-tw-15:y=15:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.4:boxborderw=2`,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'zerolatency',
+                '-crf', '28',
+                '-maxrate', '600k',
+                '-bufsize', '1200k',
                 '-bf', '0',
                 '-c:a', 'copy',
                 '-muxdelay', '0',
@@ -76,7 +83,6 @@ const server = http.createServer((req, res) => {
                 const buffer = Buffer.concat(chunks);
                 segmentCache[targetUrl] = buffer;
 
-                // ১৫ সেকেন্ড পর মেমোরি থেকে মুছে দেওয়া
                 setTimeout(() => {
                     delete segmentCache[targetUrl];
                 }, 15000);
@@ -134,7 +140,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-const PORT = 8181;
+const PORT = 3000;
 server.listen(PORT, () => {
     console.log(`High-Scale Reseller Proxy Server running on port ${PORT}`);
 });
