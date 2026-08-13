@@ -36,24 +36,23 @@ const server = http.createServer((req, res) => {
         const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
         const targetUrl = baseUrl + fileName + queryString;
 
-        // ১. ভিডিও সেগমেন্ট (.ts) প্রসেস করা
+        // ১. ভিডিও সেগমেন্ট (.ts) প্রসেস করা (ফাস্ট প্রক্সি)
         if (fileName.endsWith('.ts')) {
             res.writeHead(200, {
                 'Content-Type': 'video/mp2t',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'public, max-age=10'
+                'Access-Control-Allow-Origin': '*'
             });
 
             if (segmentCache[targetUrl]) {
                 return res.end(segmentCache[targetUrl]);
             }
 
-            // ABOX (সাদা) ও BDIX (নীল) কালার এবং স্কিনের নিচে মোটা ফন্টের ফিল্টার
+            // একদম সিম্পল ও রকেট ফাস্ট এফএফএমপেগ কমান্ড
             const ffmpegArgs = [
                 '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n',
                 '-copyts',
                 '-i', targetUrl,
-                '-vf', `scale=640:360,drawtext=font='Sans':style='Bold Italic':text='ABOX':x=w-135:y=h-38:fontsize=22:fontcolor=white:borderw=2:bordercolor=black,drawtext=font='Sans':style='Bold Italic':text='BDIX':x=w-70:y=h-38:fontsize=22:fontcolor=0x0099FF:borderw=2:bordercolor=black`,
+                '-vf', `scale=640:360,drawtext=font='Sans':text='ABOX':x=w-120:y=h-35:fontsize=22:fontcolor=white,drawtext=font='Sans':text='BDIX':x=w-65:y=h-35:fontsize=22:fontcolor=0x0099FF`,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'zerolatency',
